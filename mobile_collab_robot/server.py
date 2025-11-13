@@ -1,0 +1,64 @@
+import socket
+import struct
+import time
+from signal import SIGKILL
+
+from psutil import process_iter
+
+# from mobile_collab_robot.mobile_robot import MobileRobot
+from mobile_collab_robot.main2 import ControlCenter
+
+# HOST = "192.168.11.62"
+HOST = "192.168.137.106"
+PORT = 65444
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    s.bind((HOST, PORT))
+    s.listen(1)
+    print("listening at", HOST, PORT)
+    conn, addr = s.accept()
+    conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    prev_time = time.time()
+    with conn:
+        data_struct = struct.Struct(">" + "f" * 15 + "c")
+        robot = ControlCenter()
+        print(f"Connected by {addr}")
+        while True:
+            if time.time() - prev_time < 0.03:
+                time.sleep(0.001)
+                continue
+            else:
+                prev_time = time.time()
+            try:
+                data = [
+                    robot.robot_controller.robot_data["time"][-1],
+                    robot.robot_controller.robot_data["state"][-1][0],  # global_x
+                    robot.robot_controller.robot_data["state"][-1][1],  # global_y
+                    robot.robot_controller.robot_data["state"][-1][2],  # global_thet
+                    robot.robot_controller.robot_data["force"][-1],
+                    robot.robot_controller.robot_data["moment"][-1],
+                    robot.robot_controller.robot_data["velocity"][-1],
+                    robot.robot_controller.robot_data["angular_speed"][-1],
+                    # float(robot.arduino_controller.data["signature"][-1]),
+                    robot.robot_controller.middle_motor_data["position"][-1],
+                    robot.robot_controller.middle_motor_data["torque"][-1],
+                    robot.robot_controller.command_phi_left_dot,
+                    robot.robot_controller.command_phi_right_dot,
+                    robot.robot_controller.left_measurements["velocity"],
+                    robot.robot_controller.right_measurements["velocity"],
+                    robot.arduino_controller.force_data["Fz"][-1],
+                    # robot.arduino_controller.data["distance_from_center"][-1],
+                    # robot.arduino_controller.data["distance_to_object"][-1],
+                    # LiDARも追加したい
+                    # robot.judge_pathway.use_angles,
+                    # robot.judge_pathway.use_distances,
+                    b"\n",
+                ]
+                # print(data)
+                data_packed = data_struct.pack(*data)
+                conn.sendall(data_packed)
+            except Exception as e:
+                print(e)
+                break
